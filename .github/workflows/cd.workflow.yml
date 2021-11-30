@@ -21,5 +21,4 @@ jobs:
         host: ${{ secrets.HOST }}
         script: |
           cd PythonTwitterConnector
-          git pull origin master
           bash deploy.sh
