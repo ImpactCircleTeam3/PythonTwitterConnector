@@ -4,6 +4,8 @@ import logging
 import sys
 import psycopg2
 import csv
+import functools
+import operator
 
 from time import sleep
 from psycopg2.extras import execute_values
@@ -144,6 +146,26 @@ class ORM:
         execute_values(cls.db.cur, sql, [tuple(tweet.__dict__.values()) for tweet in tweets])
         logger.info(f"Loading tweets to postgres done.")
 
+    @classmethod
+    def write_users_to_postgres(cls, users: List[str]):
+        logger.info(f"Start Loading {len(users)} Users to Postgres")
+        users = [(user, datetime.now()) for user in users]
+        sql = f"""
+                INSERT INTO twitter_user (username, timestamp) VALUES %s
+                ON CONFLICT (username) DO NOTHING
+            """
+        execute_values(cls.db.cur, sql, users)
+
+    @classmethod
+    def write_hashtags_to_postgres(cls, hashtags: List[str]):
+        logger.info(f"Start Loading {len(hashtags)} Hashtags to Postgres")
+        hashtags = [(hashtag, datetime.now()) for hashtag in hashtags]
+        sql = f"""
+                INSERT INTO hashtag (hashtag, timestamp)  VALUES %s
+                ON CONFLICT (hashtag) DO NOTHING
+            """
+        execute_values(cls.db.cur, sql, hashtags, )
+
 
 class TwitterRunner:
     def __init__(self):
@@ -186,13 +208,43 @@ def write_tweets_to_file(hashtag: str, tweets: List[Tweet]):
             writer.writerow(tweet.parse_to_file_format().values())
 
 
+def get_users_from_tweets(tweets: List[Tweet]) -> List[str]:
+    author_list = [entity.author for entity in tweets]
+
+    linked_users_list = [entity.tagged_persons for entity in tweets if entity.tagged_persons != []]
+
+    # flatten list
+    linked_users_list = list(functools.reduce(operator.concat, linked_users_list))
+
+    # create unique lists of users
+    user_list = list(set(author_list + linked_users_list))
+
+    return user_list
+
+
+def get_hashtags_from_tweets(tweets: List[Tweet]) -> List[str]:
+    hashtag_list = [entity.hashtags for entity in tweets if entity.hashtags != []]
+
+    # flatten list
+    hashtag_list = list(functools.reduce(operator.concat, hashtag_list))
+
+    # create unique lists of users
+    hashtag_list = list(set(hashtag_list))
+
+    return hashtag_list
+
+
 def runner():
     tweet_runner = TwitterRunner()
-    jobs = ORM.get_jobs_to_execute()
+    jobs = ORM.get_jobs_to_execute() + [Job(q="goat", type="hashtag", execution_intervall=30, last_time_executed=datetime.now(), next_execution_time=datetime.now())]
     for job in jobs:
         if job.type != "hashtag":
             continue
         tweets = list(tweet_runner.get_tweets_by_hashtag(job.q))
+        users = get_users_from_tweets(tweets)
+        hashtags = get_hashtags_from_tweets(tweets)
+        ORM.write_users_to_postgres(users)
+        ORM.write_hashtags_to_postgres(hashtags)
         ORM.write_tweets_to_postgres(tweets)
         write_tweets_to_file(job.q, tweets)
         ORM.update_job(job)
