@@ -97,6 +97,10 @@ class Settings:
     def get_kafka_producer_kwargs() -> dict:
         return {
             "bootstrap.servers": os.getenv("KAFKA_CLUSTER_SERVER"),
+            "security.protocol": "SASL_SSL",
+            "sasl.mechanisms": "PLAIN",
+            "sasl.username": os.getenv("KAFKA_CLUSTER_API_KEY"),
+            "sasl.password": os.getenv("KAFKA_CLUSTER_API_SECRET")
         }
 
 
@@ -268,7 +272,6 @@ def runner():
         ORM.write_hashtags_to_postgres(hashtags)
         ORM.write_tweets_to_postgres(tweets)
         write_tweets_to_file(job.q, tweets)
-        ORM.update_job(job)
         KafkaConnector.get_instance().kafka_connector.producer.produce(
             topic="sync",
             value=json.dumps({
@@ -276,6 +279,7 @@ def runner():
                 "type": job.type
             })
         )
+        ORM.update_job(job)
 
 
 if __name__ == "__main__":
