@@ -236,7 +236,7 @@ def get_hashtags_from_tweets(tweets: List[Tweet]) -> List[str]:
 
 def runner():
     tweet_runner = TwitterRunner()
-    jobs = ORM.get_jobs_to_execute() + [Job(q="goat", type="hashtag", execution_intervall=30, last_time_executed=datetime.now(), next_execution_time=datetime.now())]
+    jobs = ORM.get_jobs_to_execute()
     for job in jobs:
         if job.type != "hashtag":
             continue
