@@ -6,7 +6,6 @@ import psycopg2
 import csv
 import functools
 import operator
-import json
 
 from time import sleep
 from psycopg2.extras import execute_values
@@ -14,7 +13,6 @@ from typing import Optional, List
 from dataclasses import dataclass
 from dotenv import load_dotenv
 from datetime import datetime, timezone, timedelta
-from confluent_kafka import Producer
 
 load_dotenv()
 
@@ -93,16 +91,6 @@ class Settings:
             "database": os.getenv("DB_NAME")
         }
 
-    @staticmethod
-    def get_kafka_producer_kwargs() -> dict:
-        return {
-            "bootstrap.servers": os.getenv("KAFKA_CLUSTER_SERVER"),
-            "security.protocol": "SASL_SSL",
-            "sasl.mechanisms": "PLAIN",
-            "sasl.username": os.getenv("KAFKA_CLUSTER_API_KEY"),
-            "sasl.password": os.getenv("KAFKA_CLUSTER_API_SECRET")
-        }
-
 
 class DB:
     DB: Optional["DB"] = None
@@ -120,19 +108,6 @@ class DB:
         self.conn = psycopg2.connect(**Settings.get_db_kwargs())
         self.cur = self.conn.cursor()
         self.conn.autocommit = True
-
-
-class KafkaConnector:
-    kafka_connector: Optional["KafkaConnector"] = None
-
-    @classmethod
-    def get_instance(cls) -> "KafkaConnector":
-        if not cls.kafka_connector:
-            cls.kafka_connector = cls()
-        return cls.kafka_connector
-
-    def __init__(self):
-        self.producer = Producer(**Settings.get_kafka_producer_kwargs())
 
 
 class ORM:
@@ -160,6 +135,11 @@ class ORM:
         now = datetime.now(timezone.utc)
         next_execution = now + timedelta(minutes=job.execution_intervall)
         cls.db.cur.execute(sql, (datetime.now(timezone.utc), next_execution, job.q, job.type))
+
+    @classmethod
+    def insert_sync(cls, job: Job):
+        sql = "INSERT INTO sync (q, type) VALUES (%s, %s)"
+        cls.db.cur.execute(sql, (job.q, job.type, ))
 
     @classmethod
     def write_tweets_to_postgres(cls, tweets: List[Tweet]):
@@ -272,13 +252,7 @@ def runner():
         ORM.write_hashtags_to_postgres(hashtags)
         ORM.write_tweets_to_postgres(tweets)
         write_tweets_to_file(job.q, tweets)
-        KafkaConnector.get_instance().kafka_connector.producer.produce(
-            topic="sync",
-            value=json.dumps({
-                "q": job.hashtag,
-                "type": job.type
-            })
-        )
+        ORM.insert_sync(job)
         ORM.update_job(job)
 
 
