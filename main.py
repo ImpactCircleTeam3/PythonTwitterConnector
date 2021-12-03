@@ -182,6 +182,13 @@ class TwitterRunner:
         logger.info(f"start retrieving tweets for hashtag {hashtag}")
         tweets = []
         for tweet in self.api.search_tweets(q=f"#{hashtag}", tweet_mode="extended", count=100):
+            if tweet.full_text.startswith("RT"):
+                # Replace tweet with original
+                # tweet.full_text = tweet.retweeted_status.full_text
+
+                # continue - no retweets wanted
+                continue
+
             tweets.append(
                 Tweet(
                     status_id=tweet.id,
