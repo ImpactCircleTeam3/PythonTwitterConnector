@@ -246,21 +246,45 @@ def get_hashtags_from_tweets(tweets: List[Tweet]) -> List[str]:
     return hashtag_list
 
 
-def runner():
+def run_hashtag_job(job: Job):
     tweet_runner = TwitterRunner()
+    tweets = list(tweet_runner.get_tweets_by_hashtag(job.q))
+    users = get_users_from_tweets(tweets)
+    hashtags = get_hashtags_from_tweets(tweets)
+    ORM.write_users_to_postgres(users)
+    ORM.write_hashtags_to_postgres(hashtags)
+    ORM.write_tweets_to_postgres(tweets)
+    write_tweets_to_file(job.q, tweets)
+    ORM.insert_sync(job)
+    ORM.update_job(job)
+
+
+def run_bubble_job(job: Job):
+    tweet_runner = TwitterRunner()
+    hashtags = job.q.split(",")
+    for hashtag in hashtags:
+        logger.info(f"Run Hashtagjob {hashtag} for bubble.")
+        tweets = list(tweet_runner.get_tweets_by_hashtag(hashtag))
+        users = get_users_from_tweets(tweets)
+        fetched_hashtags = get_hashtags_from_tweets(tweets)
+        ORM.write_users_to_postgres(users)
+        ORM.write_hashtags_to_postgres(fetched_hashtags)
+        ORM.write_tweets_to_postgres(tweets)
+        write_tweets_to_file(hashtag, tweets)
+
+    ORM.insert_sync(job)
+    ORM.update_job(job)
+
+
+def runner():
     jobs = ORM.get_jobs_to_execute()
     for job in jobs:
-        if job.type != "hashtag":
+        if job.type == "hashtag":
+            run_hashtag_job(job)
+        elif job.type == "bubble":
+            run_bubble_job(job)
+        else:
             continue
-        tweets = list(tweet_runner.get_tweets_by_hashtag(job.q))
-        users = get_users_from_tweets(tweets)
-        hashtags = get_hashtags_from_tweets(tweets)
-        ORM.write_users_to_postgres(users)
-        ORM.write_hashtags_to_postgres(hashtags)
-        ORM.write_tweets_to_postgres(tweets)
-        write_tweets_to_file(job.q, tweets)
-        ORM.insert_sync(job)
-        ORM.update_job(job)
 
 
 if __name__ == "__main__":
