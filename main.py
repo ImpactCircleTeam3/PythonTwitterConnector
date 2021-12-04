@@ -188,7 +188,8 @@ class TwitterRunner:
 
                 # continue - no retweets wanted
                 continue
-
+            if len(tweet.entities["hashtags"]) > 7:
+                continue
             tweets.append(
                 Tweet(
                     status_id=tweet.id,
